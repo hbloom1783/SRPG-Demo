@@ -15,16 +15,18 @@ namespace SRPGDemo.Gameplay
 
         private MapMobile mobile;
         private IEnumerable<PointyHexPoint> path;
-        private float timePer;
+        private GameControllerState nextState;
+
+        private float timePer = 0.25f;
 
         public MoveUnit(
             MapMobile mobile,
             IEnumerable<PointyHexPoint> path,
-            float timePer = 0.5f)
+            GameControllerState nextState)
         {
             this.mobile = mobile;
             this.path = path;
-            this.timePer = timePer;
+            this.nextState = nextState;
         }
 
         public override IEnumerator AnimationCoroutine()
@@ -33,6 +35,9 @@ namespace SRPGDemo.Gameplay
 
             foreach (PointyHexPoint newLoc in path)
             {
+                if (mobile is LargeMobile)
+                    ((LargeMobile)mobile).facing = (newLoc - oldLoc).ToFacing();
+
                 for (float timePassed = 0.0f;
                     timePassed < timePer;
                     timePassed += Time.deltaTime)
@@ -50,8 +55,9 @@ namespace SRPGDemo.Gameplay
 
             map.UnplaceMobile(mobile);
             map.PlaceMobile(mobile, map.mapGrid[oldLoc]);
+            mobile.actions.Increment(-1);
 
-            turn.StateTransition(new PlayerSelectUnit());
+            game.StateTransition(nextState);
         }
 
         #endregion

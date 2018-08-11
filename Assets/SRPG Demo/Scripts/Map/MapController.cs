@@ -58,7 +58,7 @@ namespace SRPGDemo.Map
 
         #region Game-specific
 
-        public int actionsLeft = 1;
+        public Capacitor actions = new Capacitor(1);
 
         public abstract IEnumerable<PointyHexPoint> ThreatArea();
 

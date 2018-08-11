@@ -14,6 +14,7 @@ namespace SRPGDemo.Map
         sw,
         w,
         nw,
+        bad,
     }
 
     public static class FacingMethods
@@ -66,6 +67,24 @@ namespace SRPGDemo.Map
                 case Facing.nw: return PointyHexPoint.NorthWest;
                 default: return PointyHexPoint.Zero;
             }
+        }
+
+        public static Facing ToFacing(this PointyHexPoint input)
+        {
+            if (input == PointyHexPoint.NorthEast)
+                return Facing.ne;
+            else if (input == PointyHexPoint.East)
+                return Facing.e;
+            else if (input == PointyHexPoint.SouthEast)
+                return Facing.se;
+            else if (input == PointyHexPoint.SouthWest)
+                return Facing.sw;
+            else if (input == PointyHexPoint.West)
+                return Facing.w;
+            else if (input == PointyHexPoint.NorthWest)
+                return Facing.nw;
+            else
+                throw new Exception("Tried to convert " + input.ToString() + " to a facing!");
         }
     }
 

@@ -39,17 +39,16 @@ namespace SRPGDemo.Map
             return loc.DistanceFrom(other) == 0;
         }
 
-        public IEnumerable<PathNode> PathBack()
+        public IEnumerable<PathNode> PathTo()
         {
             List<PathNode> result = new List<PathNode>();
 
-            PathNode ancestor = previous;
+            // Each ancestor goes before its children
+            for (PathNode ancestor = previous; ancestor != null; ancestor = ancestor.previous)
+                result.Insert(0, ancestor);
 
-            while (ancestor != null)
-            {
-                result.Add(ancestor);
-                ancestor = ancestor.previous;
-            }
+            // This node is last
+            result.Add(this);
 
             return result;
         }

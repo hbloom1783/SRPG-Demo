@@ -5,9 +5,52 @@ using System.Collections.Generic;
 using UnityEngine;
 using Gamelogic.Grids;
 using Gamelogic.Extensions;
+using SRPGDemo.Extensions;
 
 namespace SRPGDemo.Map
 {
+    public static class MapHighlight
+    {
+        public static void ClearMap()
+        {
+            foreach (PointyHexPoint point in Controllers.map.mapGrid)
+            {
+                Controllers.map.CellAt(point).ClearTint();
+            }
+        }
+
+        public static void Shimmer(PointyHexPoint loc)
+        {
+            Controllers.map.CellAt(loc).SetTint(
+                Color.white,
+                ColorExt.Grayscale(0.5f),
+                0.25f);
+        }
+
+        public static void Shimmer(PointyHexPoint loc, Color color)
+        {
+            Controllers.map.CellAt(loc).SetTint(
+                color,
+                color.Mix(Color.black),
+                0.25f);
+        }
+
+        public static void TintRange(IEnumerable<PointyHexPoint> locs, Color color)
+        {
+            locs.Select(Controllers.map.CellAt).ForEach(x => x.SetTint(color));
+        }
+
+        public static void ShimmerRange(IEnumerable<PointyHexPoint> locs)
+        {
+            locs.ForEach(x => Shimmer(x));
+        }
+
+        public static void ShimmerRange(IEnumerable<PointyHexPoint> locs, Color color)
+        {
+            locs.ForEach(x => Shimmer(x, color));
+        }
+    }
+
     [AddComponentMenu("SRPG/Map Cell")]
     [RequireComponent(typeof(SpriteRenderer))]
     public class MapCell : TileCell

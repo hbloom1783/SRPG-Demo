@@ -53,9 +53,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   team: 1
-  moveSpeed: 8
+  moveSpeed: 3
   engaged: 0
-  actionsLeft: 1
 --- !u!212 &212417685409621938
 SpriteRenderer:
   m_ObjectHideFlags: 1

@@ -1,4 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Linq;
+using System.Collections.Generic;
+using UnityEngine;
 using Random = UnityEngine.Random;
 
 namespace SRPGDemo.Extensions
@@ -20,6 +23,34 @@ namespace SRPGDemo.Extensions
         public static T RandomTake<T>(this ICollection<T> input)
         {
             T item = input.RandomPick();
+            input.Remove(item);
+            return item;
+        }
+
+        public static T RandomPickMin<T>(this IEnumerable<T> input, Func<T, int> selector)
+        {
+            int minVal = input.Min(selector);
+
+            return input.Where(x => selector(x) == minVal).RandomPick();
+        }
+
+        public static T RandomTakeMin<T>(this ICollection<T> input, Func<T, int> selector)
+        {
+            T item = input.RandomPickMin(selector);
+            input.Remove(item);
+            return item;
+        }
+
+        public static T RandomPickMax<T>(this IEnumerable<T> input, Func<T, int> selector)
+        {
+            int maxVal = input.Max(selector);
+
+            return input.Where(x => selector(x) == maxVal).RandomPick();
+        }
+
+        public static T RandomTakeMax<T>(this ICollection<T> input, Func<T, int> selector)
+        {
+            T item = input.RandomPickMax(selector);
             input.Remove(item);
             return item;
         }

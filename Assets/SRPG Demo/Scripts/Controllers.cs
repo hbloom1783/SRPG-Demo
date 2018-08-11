@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using SRPGDemo.Map;
 using SRPGDemo.Gameplay;
+using SRPGDemo.UI;
 
 namespace SRPGDemo
 {
@@ -25,6 +26,17 @@ namespace SRPGDemo
                 if (_gameController == null)
                     _gameController = Object.FindObjectOfType<GameController>();
                 return _gameController;
+            }
+        }
+
+        private static UiController _uiController = null;
+        public static UiController ui
+        {
+            get
+            {
+                if (_uiController == null)
+                    _uiController = Object.FindObjectOfType<UiController>();
+                return _uiController;
             }
         }
     }

@@ -4,18 +4,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Gamelogic.Grids;
+using SRPGDemo.UI;
 
 namespace SRPGDemo.Gameplay
 {
-    abstract class GameControllerAnimation : GameControllerState
+    class JumpInput : GameControllerState
     {
-        public abstract IEnumerator AnimationCoroutine();
-
         #region State implementation
 
         protected override void SubEnterState()
         {
-            turn.StartCoroutine(AnimationCoroutine());
         }
 
         protected override void SubExitState()
@@ -26,7 +24,7 @@ namespace SRPGDemo.Gameplay
 
         #region Input handling
 
-        protected override void HexTouchedHandler(PointyHexPoint loc)
+        protected override void HexTouchedHandler(PointyHexPoint? loc)
         {
         }
 
@@ -38,6 +36,26 @@ namespace SRPGDemo.Gameplay
         {
         }
 
+        protected override void UiSignalHandler(UiSignal signal)
+        {
+        }
+
         #endregion
+    }
+
+    class JumpMove : GameControllerAnimation
+    {
+        public override IEnumerator AnimationCoroutine()
+        {
+            yield return null;
+        }
+    }
+
+    class JumpAttack : GameControllerAnimation
+    {
+        public override IEnumerator AnimationCoroutine()
+        {
+            yield return null;
+        }
     }
 }
