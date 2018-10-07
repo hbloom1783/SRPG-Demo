@@ -8,18 +8,28 @@ namespace SRPGDemo
 {
     public class Capacitor
     {
-        private int max;
+        private int _max;
+        private int _min;
         private int current;
 
-        public Capacitor(int start, int max)
+        public Capacitor(int start, int max, int min)
         {
-            this.max = max;
+            _max = max;
+            _min = min;
             current = start;
         }
 
-        public Capacitor(int max)
+        public Capacitor(int start, int max)
         {
-            this.max = current = max;
+            _max = max;
+            _min = 0;
+            current = start;
+        }
+
+        public Capacitor(int startMax)
+        {
+            _max = current = startMax;
+            _min = 0;
         }
 
         public float fraction
@@ -28,19 +38,31 @@ namespace SRPGDemo
             set { current = Mathf.RoundToInt(max * value); }
         }
 
-        public void Reset()
+        public Capacitor Clamp()
         {
-            current = max;
+            if (current > _max) current = _max;
+            else if (current < _min) current = _min;
+            return this;
         }
 
-        public void Increment(int value)
+        public Capacitor Reset()
+        {
+            current = _max;
+            return this;
+        }
+
+        public Capacitor Increment(int value)
         {
             current += value;
+            return this;
         }
 
         public static implicit operator int(Capacitor cap)
         {
             return cap.current;
         }
+
+        public int value { get { return current; } }
+        public int max { get { return _max; } }
     }
 }

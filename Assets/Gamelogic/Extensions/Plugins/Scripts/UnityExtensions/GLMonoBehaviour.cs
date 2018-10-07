@@ -22,19 +22,19 @@ namespace Gamelogic.Extensions
 		[HideInInspector]
 		public string __messageText; //TODO Remove?
 
-		#region Static Methods
+        #region Static Methods
 
 #if !UNITY_5
-		/// <summary>
-		/// Instantiates the specified prefab.
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="prefab">The object.</param>
-		/// <returns>T.</returns>
-		public static T Instantiate<T>(T prefab) where T : Component
-		{
-			return (T) Object.Instantiate(prefab);
-		}
+        /// <summary>
+        /// Instantiates the specified prefab.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="prefab">The object.</param>
+        /// <returns>T.</returns>
+        public static new T Instantiate<T>(T prefab) where T : Component
+        {
+            return (T)Object.Instantiate(prefab);
+        }
 #endif
 
 #if !UNITY_5_5_OR_NEWER
@@ -58,10 +58,10 @@ namespace Gamelogic.Extensions
 		}
 #endif
 
-		/// <summary>
-		/// Instantiates a prefab and attaches it to the given root. 
-		/// </summary>
-		public static T Instantiate<T>(T prefab, GameObject root) where T : Component
+        /// <summary>
+        /// Instantiates a prefab and attaches it to the given root. 
+        /// </summary>
+        public static T Instantiate<T>(T prefab, GameObject root) where T : Component
 		{
 			var newObject = Instantiate(prefab);
 

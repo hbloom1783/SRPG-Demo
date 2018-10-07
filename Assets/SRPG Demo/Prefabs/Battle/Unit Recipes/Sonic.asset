@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4c44090672c54945aebdedba81ddfed, type: 3}
+  m_Name: Sonic
+  m_EditorClassIdentifier: 
+  sprite: {fileID: 21300000, guid: a8c65cbd5532e21428ff1368e81718a5, type: 3}
+  attackSound: {fileID: 8300000, guid: 0bb8aaa6fffc345489d246b5f372f876, type: 3}
+  jumpSound: {fileID: 8300000, guid: de9015bc1cbbd7148b6446eeb2d2dea2, type: 3}
+  runSound: {fileID: 8300000, guid: 194d614b6ae01c04493b98c80042ba16, type: 3}
+  maxHp: 3
+  maxAp: 2
+  move: 8
+  jump: 3
+  size: 0

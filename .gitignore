@@ -34,3 +34,7 @@ sysinfo.txt
 # Builds
 *.apk
 *.unitypackage
+
+# Temporary Assets
+Assets/RPGMaker Assets.meta
+Assets/RPGMaker Assets/*

@@ -41,12 +41,12 @@ TagManager:
   - name: Default
     uniqueID: 0
     locked: 0
-  - name: Effects
-    uniqueID: 1964560813
+  - name: Map Cells
+    uniqueID: 1714274805
     locked: 0
   - name: Mobiles
     uniqueID: 2500051205
     locked: 0
-  - name: Map Cells
-    uniqueID: 1714274805
+  - name: Effects
+    uniqueID: 1964560813
     locked: 0

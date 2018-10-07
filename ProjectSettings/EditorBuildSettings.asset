@@ -6,5 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Gameplay.unity
+    path: Assets/SRPG Demo/Scenes/Main Menu.unity
+    guid: f33c883377582884e997e5639560ce1e
+  - enabled: 1
+    path: Assets/SRPG Demo/Scenes/Battle.unity
     guid: aac5f27a8e15f434388d818c45969807

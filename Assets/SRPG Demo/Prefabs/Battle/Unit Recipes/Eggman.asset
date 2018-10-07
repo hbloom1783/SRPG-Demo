@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4c44090672c54945aebdedba81ddfed, type: 3}
+  m_Name: Eggman
+  m_EditorClassIdentifier: 
+  sprite: {fileID: 21300000, guid: 108d9921246a6644287432f3c3e0848c, type: 3}
+  attackSound: {fileID: 8300000, guid: 4408718246eabf8408d4f14f417d0193, type: 3}
+  jumpSound: {fileID: 0}
+  runSound: {fileID: 8300000, guid: 0aa18cdc4f50daf46a222c53e40b0459, type: 3}
+  maxHp: 8
+  maxAp: 2
+  move: 3
+  jump: 1
+  size: 1
