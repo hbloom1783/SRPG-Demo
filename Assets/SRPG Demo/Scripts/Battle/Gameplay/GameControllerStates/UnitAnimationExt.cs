@@ -1,38 +1,37 @@
 ﻿using System.Collections;
 using UnityEngine;
-using Gamelogic.Grids;
 using SRPGDemo.Battle.Map;
+using GridLib.Hex;
 
 namespace SRPGDemo.Battle.Gameplay.Extensions
 {
     public static class UnitAnimationExt
     {
-        private static MapController map { get { return Controllers.map; } }
-        private static GameController game { get { return Controllers.game; } }
+        private static MapController map { get { return MapController.instance; } }
+        private static GameController game { get { return GameController.instance; } }
 
         // Assumes a parabola crossing (0,0) (0.5,1) (1,0)
         // 4x - 4x^2
         private static float ParabolicHeight(float x)
         {
-            float x2 = x * x;
-            return (4 * x) - (4 * x2);
+            return (4 * x) - (4 * x * x);
         }
 
         public static IEnumerator AnimateLinearMove(
             this MapUnit unit,
-            PointyHexPoint oldLoc,
-            PointyHexPoint newLoc,
+            HexCoords oldLoc,
+            HexCoords newLoc,
             float moveTime)
         {
-            unit.facing = (newLoc - oldLoc).ToFacing();
+            unit.facing = oldLoc.FacingTo(newLoc);
 
             for (float timePassed = 0.0f;
                 timePassed < moveTime;
                 timePassed += Time.deltaTime)
             {
                 unit.transform.position = Vector3.Lerp(
-                    map.mapGrid[oldLoc].transform.position,
-                    map.mapGrid[newLoc].transform.position,
+                    map[oldLoc].transform.position,
+                    map[newLoc].transform.position,
                     timePassed / moveTime);
 
                 yield return null;
@@ -41,18 +40,18 @@ namespace SRPGDemo.Battle.Gameplay.Extensions
 
         public static IEnumerator AnimateParabolicMove(
             this MapUnit unit,
-            PointyHexPoint oldLoc,
-            PointyHexPoint newLoc,
+            HexCoords oldLoc,
+            HexCoords newLoc,
             float airTime,
             float peakHeight)
         {
-            unit.Face(newLoc);
+            unit.facing = oldLoc.FacingTo(newLoc);
 
             for (float timePassed = 0.0f; timePassed < airTime; timePassed += Time.deltaTime)
             {
                 Vector3 airPos = Vector3.Lerp(
-                        map.mapGrid[oldLoc].transform.position,
-                        map.mapGrid[newLoc].transform.position,
+                        map[oldLoc].transform.position,
+                        map[newLoc].transform.position,
                         timePassed / airTime);
 
                 airPos.y += ParabolicHeight(timePassed / airTime) * peakHeight;
@@ -65,10 +64,10 @@ namespace SRPGDemo.Battle.Gameplay.Extensions
 
         public static IEnumerator AnimateParabolicMove(
             this MapUnit unit,
-            PointyHexPoint oldLoc,
-            PointyHexPoint newLoc)
+            HexCoords oldLoc,
+            HexCoords newLoc)
         {
-            float airTime = (float)oldLoc.DistanceFrom(newLoc) / 3;
+            float airTime = (float)oldLoc.DistanceTo(newLoc) / 3;
             float peakHeight = airTime * 0.66f;
             return AnimateParabolicMove(unit, oldLoc, newLoc, airTime, peakHeight);
         }

@@ -2,93 +2,72 @@
 using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
-using Gamelogic.Grids;
+using GridLib.Hex;
 using SRPGDemo.Extensions;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace SRPGDemo.Battle.Map
 {
     [AddComponentMenu("SRPG Demo/Battle/Map Controller")]
-    [RequireComponent(typeof(PointyHexTileGridBuilder))]
-    public class MapController : GridBehaviour<PointyHexPoint>
+    public class MapController : HexGridManager<MapCell>
     {
-        #region Map Reference
+        #region Singleton
 
-        private IGrid<MapCell, PointyHexPoint> _mapGrid = null;
-        public IGrid<MapCell, PointyHexPoint> mapGrid
+        private static MapController _instance = null;
+        public static MapController instance
         {
-            get
-            {
-                if (_mapGrid == null) _mapGrid = Grid.CastValues<MapCell, PointyHexPoint>();
-
-                return _mapGrid;
-            }
+            get { return _instance; }
+            private set { _instance = value; }
         }
-        
-        public PointyHexPoint WhereIs(MapCell cell)
-        {
-            PointList<PointyHexPoint> pointList = mapGrid.WhereCell(x => x == cell).ToPointList();
 
-            if (pointList.Count == 1)
-                return pointList[0];
-            else if (pointList.Count > 1)
-                throw new ArgumentOutOfRangeException("cell", "Count > 1");
+        void Awake()
+        {
+            if (instance != null)
+                Destroy(gameObject);
             else
-                throw new ArgumentOutOfRangeException("cell", "Count <= 0");
+                instance = this;
         }
 
-        public PointyHexPoint WhereIs(MapUnit unit)
+        void OnDestroy()
+        {
+            instance = null;
+        }
+
+        #endregion
+
+        #region Map reference
+
+        public override void InitCell(HexCoords loc, MapCell newCell)
+        {
+            base.InitCell(loc, newCell);
+        }
+
+        public HexCoords WhereIs(MapUnit unit)
         {
             return unitIndex[unit];
         }
 
-        public MapCell CellAt(PointyHexPoint loc)
+        public MapUnit UnitAt(HexCoords loc)
         {
             if (InBounds(loc))
-                return mapGrid[loc];
+                return CellAt(loc).unitPresent;
             else
                 return null;
         }
 
-        public MapUnit UnitAt(PointyHexPoint loc)
+        public MapCell UnitCell(MapUnit unit)
         {
-            if (InBounds(loc))
-                return mapGrid[loc].unitPresent;
-            else
-                return null;
-        }
-
-        public bool InBounds(PointyHexPoint loc)
-        {
-            return Grid.Contains(loc);
+            return CellAt(WhereIs(unit));
         }
 
         #endregion
-
-        #region Map Extensions
-
-        public List<PointyHexPoint> GetArc(
-            PointyHexPoint origin,
-            Facing startAngle,
-            Facing endAngle,
-            int minRadius,
-            int maxRadius)
-        {
-            return Map.GetArc(origin, startAngle, endAngle, minRadius, maxRadius);
-        }
-
-        public List<PointyHexPoint> GetCircle(
-           PointyHexPoint origin,
-           int minRadius,
-           int maxRadius)
-        {
-            return Map.GetCircle(origin, minRadius, maxRadius);
-        }
-
-        #endregion
-
+        
         #region Unit management
 
-        Dictionary<MapUnit, PointyHexPoint> unitIndex = new Dictionary<MapUnit, PointyHexPoint>();
+        Dictionary<MapUnit, HexCoords> unitIndex = new Dictionary<MapUnit, HexCoords>();
 
         public void PlaceUnit(MapUnit unit, MapCell cell)
         {
@@ -98,49 +77,33 @@ namespace SRPGDemo.Battle.Map
             cell.unitPresent = unit;
             unit.transform.parent = cell.transform;
             unit.transform.position = cell.transform.position;
-            unit.spriteRenderer.sortingOrder = cell.spriteRenderer.sortingOrder;
-            unitIndex[unit] = WhereIs(cell);
-
-            // Establish threat
-            unit.GetThreatArea()
-                .Select(CellAt)
-                .ForEach(x => x.threatList.Add(unit));
-
-            // Notify neighbors
-            cell.GetNeighbors()
-                .ForEach(x => x.neighborUnitList.Add(unit));
+            unitIndex[unit] = cell.loc;
         }
 
-        public void PlaceUnit(MapUnit unit, PointyHexPoint point)
+        public void PlaceUnit(MapUnit unit, HexCoords loc)
         {
-            PlaceUnit(unit, mapGrid[point]);
+            PlaceUnit(unit, CellAt(loc));
         }
 
         public void UnplaceUnit(MapUnit unit)
         {
-            mapGrid.Select(CellAt).ForEach(x =>
-            {
-                x.threatList.Remove(unit);
-                x.neighborUnitList.Remove(unit);
-            });
-
-            mapGrid[WhereIs(unit)].unitPresent = null;
+            CellAt(WhereIs(unit)).unitPresent = null;
             unit.transform.parent = transform;
             unitIndex.Remove(unit);
         }
 
-        public void ReseatUnit(MapUnit unit)
+        /*public void ReseatUnit(MapUnit unit)
         {
-            mapGrid.Select(CellAt).ForEach(x =>
+            cells.ForEach(x =>
             {
-                x.threatList.Remove(unit);
+                x.AddThreat(unit);
             });
 
             // Establish threat
             unit.GetThreatArea()
                 .Select(CellAt)
-                .ForEach(x => x.threatList.Add(unit));
-        }
+                .ForEach(x => x.AddThreat(unit));
+        }*/
 
         public IEnumerable<MapUnit> Units()
         {
@@ -149,7 +112,12 @@ namespace SRPGDemo.Battle.Map
 
         public IEnumerable<MapUnit> Units(UnitTeam team)
         {
-            return Units().Where(x => x.team == team);
+            return Units(x => x.team == team);
+        }
+
+        public IEnumerable<MapUnit> Units(Func<MapUnit, bool> pred)
+        {
+            return Units().Where(pred);
         }
 
         public bool HasUnit(MapUnit unit)
@@ -158,34 +126,28 @@ namespace SRPGDemo.Battle.Map
         }
 
         #endregion
-
-        #region Map Creation
-
-        // After grid instantiates
-        public override void InitGrid()
-        {
-            // Force the mapGrid cache to refresh
-            _mapGrid = null;
-
-            // Reorder the cells for visual clarity
-            foreach (PointyHexPoint point in mapGrid.ToPointList())
-            {
-                mapGrid[point].spriteRenderer.sortingOrder = -point.Y;
-            }
-        }
-
-        void Start()
-        {
-            if (Application.isPlaying)
-            {
-                // Run all the attached generation routines
-                foreach (MapGenerator generator in GetComponents<MapGenerator>())
-                {
-                    generator.Generate();
-                }
-            }
-        }
-
-        #endregion
     }
+
+#if UNITY_EDITOR
+    [CustomEditor(typeof(MapController))]
+    class MapControllerEditor : Editor
+    {
+        public override void OnInspectorGUI()
+        {
+            base.OnInspectorGUI();
+
+            MapController myScript = (MapController)target;
+
+            if (GUILayout.Button("Initialize"))
+            {
+                myScript.InitGrid();
+            }
+
+            if (GUILayout.Button("Clear"))
+            {
+                myScript.ClearGrid();
+            }
+        }
+    }
+#endif
 }

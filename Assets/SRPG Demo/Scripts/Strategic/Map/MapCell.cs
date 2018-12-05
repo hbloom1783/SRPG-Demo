@@ -1,61 +1,88 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Profiling;
-using Gamelogic.Grids;
-using Gamelogic.Extensions;
-using SRPGDemo.Extensions;
+using GridLib.Hex;
+using UnityEngine.UI;
 
 namespace SRPGDemo.Strategic.Map
 {
-    public enum CellState
+    public static class EnumerableExt
     {
-        // In either case:
+        private static MapController map { get { return MapController.instance; } }
+
+        public static IEnumerable<HexCoords> Frontier(this IEnumerable<HexCoords> region)
+        {
+            HashSet<HexCoords> done = new HashSet<HexCoords>(region);
+
+            foreach (HexCoords target in region)
+            {
+                foreach (HexCoords neighbor in target.neighbors)
+                {
+                    if (!done.Contains(neighbor))
+                    {
+                        yield return neighbor;
+                        done.Add(neighbor);
+                    }
+                }
+            }
+        }
+
+        public static IEnumerable<MapCell> Frontier(this IEnumerable<MapCell> region)
+        {
+            return region.Select(x => x.loc).Frontier().Select(map.CellAt);
+        }
+    }
+
+    public enum CellType
+    {
         empty,
 
-        // On the map itself:
-        filled,
-        proposed,
-        conflicted,
+        // Moon
+        moonPlain,
+        moonCrashSite,
 
-        // On the floating map piece:
+        // Big Green
+        greenPlain,
+        greenCity,
+    }
+
+    public enum CellHighlight
+    {
+        neutral,
         valid,
         invalid,
+    }
+    
+    public enum CellFogOfWar
+    {
+        unexplored,
+        clear,
+        returned,
     }
 
     [AddComponentMenu("SRPG Demo/Strategic/Map Cell")]
     [RequireComponent(typeof(SpriteRenderer))]
-    public class MapCell : TileCell
+    public class MapCell : HexGridCell
     {
         #region Shorthands
 
-        private MapController map { get { return Controllers.map; } }
-        public FlatHexPoint loc
+        private MapController map { get { return MapController.instance; } }
+
+        public IEnumerable<MapCell> neighbors
         {
             get
             {
-                Profiler.BeginSample("MapCell.loc");
-
-                FlatHexPoint result = map.WhereIs(this);
-
-                Profiler.EndSample();
-
-                return result;
+                return loc.neighbors
+                    .Where(map.InBounds)
+                    .Select(map.CellAt);
             }
         }
 
-        public IEnumerable<MapCell> GetNeighbors()
+        public MapCell OffsetBy(HexCoords offset)
         {
-            Profiler.BeginSample("MapCell.GetNeighbors()");
-
-            IEnumerable<MapCell> result = map.WhereIs(this).GetNeighbors()
-                .Where(map.InBounds)
-                .Select(map.CellAt);
-
-            Profiler.EndSample();
-
-            return result;
+            if (map.InBounds(loc + offset)) return map.CellAt(loc + offset);
+            else return null;
         }
 
         private SpriteRenderer _spriteRenderer = null;
@@ -68,88 +95,119 @@ namespace SRPGDemo.Strategic.Map
             }
         }
 
+        public Text debugText = null;
+
         #endregion
 
-        #region TileCell implementation
+        #region MapUnit
 
-        public override void __UpdatePresentation(bool forceUpdate = false)
-        {
-            if (forceUpdate) UpdatePresentation();
-        }
-
-        public override Color Color
-        {
-            get
-            {
-                return spriteRenderer.color;
-            }
-
-            set
-            {
-                spriteRenderer.color = value;
-            }
-        }
-
-        public override Vector2 Dimensions
-        {
-            get
-            {
-                return spriteRenderer.bounds.size;
-            }
-        }
-
-        public override void SetAngle(float angle)
-        {
-            spriteRenderer.transform.SetLocalRotationZ(angle);
-        }
-
-        public override void AddAngle(float angle)
-        {
-            spriteRenderer.transform.RotateAroundZ(angle);
-        }
+        public MapUnit unitPresent = null;
 
         #endregion
 
         #region Presentation
 
-        private CellState _state = CellState.empty;
-        public CellState state
+        public Sprite emptySprite = null;
+        public Sprite greenSprite = null;
+        public Sprite moonSprite = null;
+
+        private CellType _type = CellType.empty;
+        public CellType type
         {
-            get { return _state; }
+            get { return _type; }
             set
             {
-                _state = value;
+                _type = value;
                 UpdatePresentation();
+            }
+        }
+
+        private CellType _overlayType = CellType.empty;
+        public CellType overlayType
+        {
+            get { return _overlayType; }
+            set
+            {
+                _overlayType = value;
+                UpdatePresentation();
+            }
+        }
+
+        public CellType displayType
+        {
+            get
+            {
+                return (overlayType == CellType.empty) ? type : overlayType;
+            }
+        }
+
+        private CellHighlight _highlight = CellHighlight.neutral;
+        public CellHighlight highlight
+        {
+            get { return _highlight; }
+            set
+            {
+                _highlight = value;
+                UpdatePresentation();
+            }
+        }
+
+        private CellFogOfWar _fog = CellFogOfWar.unexplored;
+        public CellFogOfWar fog
+        {
+            get { return _fog; }
+            set
+            {
+                _fog = value;
+                UpdatePresentation();
+            }
+        }
+        
+        public bool isFilled { get { return _type != CellType.empty; } }
+
+        private Sprite SwitchSprite()
+        {
+            switch (displayType)
+            {
+                default:
+                case CellType.empty:
+                    return emptySprite;
+
+                case CellType.moonPlain:
+                case CellType.moonCrashSite:
+                    return moonSprite;
+
+                case CellType.greenPlain:
+                case CellType.greenCity:
+                    return greenSprite;
+            }
+        }
+
+        private Color SwitchColor()
+        {
+            switch (highlight)
+            {
+                default:
+                case CellHighlight.neutral:
+                    return Color.white;
+
+                case CellHighlight.valid:
+                    return Color.green;
+
+                case CellHighlight.invalid:
+                    return Color.red;
             }
         }
 
         public void UpdatePresentation()
         {
-            switch (state)
+            spriteRenderer.sprite = SwitchSprite();
+            spriteRenderer.color = SwitchColor();
+
+            if (debugText != null)
             {
-                case CellState.empty:
-                    Color = Color.clear;
-                    break;
-
-                case CellState.filled:
-                    Color = Color.white;
-                    break;
-                case CellState.proposed:
-                    Color = Color.clear;
-                    //Color = Color.green.Mix(Color.clear);
-                    break;
-                case CellState.conflicted:
-                    Color = Color.clear;
-                    //Color = Color.red.Mix(Color.clear);
-                    break;
-
-                case CellState.valid:
-                    Color = Color.green.Mix(Color.clear);
-                    break;
-
-                case CellState.invalid:
-                    Color = Color.red.Mix(Color.clear);
-                    break;
+                debugText.text  = type.ToString() + "\n";
+                debugText.text += fog.ToString();
             }
         }
 

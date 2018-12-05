@@ -1,36 +1,37 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using GridLib.Hex;
 using UnityEngine;
-using Gamelogic.Grids;
-using SRPGDemo;
-using SRPGDemo.Battle.Map;
+using Random = UnityEngine.Random;
 
 namespace SRPGDemo.Battle.Map
 {
     [AddComponentMenu("SRPG Demo/Battle/Map Generators/Perlin Map Generator")]
-    public class PerlinMapGenerator : MapGenerator
+    public class PerlinMapGenerator : HexGridInitializer<MapCell>
     {
         public float walkable = 0.6f;
         public float perlinScale = 10;
 
-        protected override void InnerGenerate()
+        public override void InitGrid(HexGridManager<MapCell> grid, bool isPlaying)
         {
-            float xOffset = Random.Range(0.0f, 10000.0f);
-            float yOffset = Random.Range(0.0f, 10000.0f);
-
-            foreach (PointyHexPoint point in map.mapGrid)
+            MapController map = (MapController)grid;
+            if (isPlaying)
             {
-                float perlinX = (Map[point].x * perlinScale) + xOffset;
-                float perlinY = (Map[point].y * perlinScale) + yOffset;
+                float xOffset = Random.Range(0.0f, 10000.0f);
+                float yOffset = Random.Range(0.0f, 10000.0f);
 
-                float value = Mathf.PerlinNoise(perlinX, perlinY);
+                foreach (HexCoords point in map.coords)
+                {
+                    float perlinX = (map.GridToWorld(point).x * perlinScale) + xOffset;
+                    float perlinY = (map.GridToWorld(point).y * perlinScale) + yOffset;
 
-                MapCell mapCell = map.mapGrid[point];
+                    float value = Mathf.PerlinNoise(perlinX, perlinY);
 
-                if (value <= walkable)
-                    mapCell.terrainType = TerrainType.open;
-                else
-                    mapCell.terrainType = TerrainType.notWalkable;
+                    MapCell mapCell = map[point];
+
+                    if (value <= walkable)
+                        mapCell.terrainType = TerrainType.open;
+                    else
+                        mapCell.terrainType = TerrainType.notWalkable;
+                }
             }
         }
     }

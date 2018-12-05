@@ -2,11 +2,12 @@
 using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
-using Gamelogic.Grids;
 using SRPGDemo.Battle.Map;
-using SRPGDemo.Battle.GUI;
+using SRPGDemo.Battle.Map.Pathing;
+using SRPGDemo.Battle.UI;
 using SRPGDemo.Extensions;
-using System;
+using GridLib.Hex;
+using UnityEngine.EventSystems;
 
 namespace SRPGDemo.Battle.Gameplay
 {
@@ -15,7 +16,7 @@ namespace SRPGDemo.Battle.Gameplay
         public static IEnumerator PlayerLoses()
         {
             yield return null;
-            Controllers.game.cache.ChangeState(new EnemyWins());
+            GameController.instance.ChangeState(new EnemyWins());
         }
     }
 
@@ -30,27 +31,30 @@ namespace SRPGDemo.Battle.Gameplay
             }
             else
             {
-                GuiText marqueeText = gui.GetText(GuiID.marqueeText);
-
                 // Display marquee
-                marqueeText.Activate();
-                marqueeText.text = "Player Turn";
-                marqueeText.color = Color.white.Alpha(0.0f);
+                ui.marqueeText.Activate();
+                ui.marqueeText.text = "Player Turn";
+                ui.marqueeText.color = Color.white.Alpha(0.0f);
 
                 for (float timePassed = 0.0f; timePassed < 1.0f; timePassed += Time.deltaTime)
                 {
-                    marqueeText.color = Color.Lerp(Color.white.Alpha(0.0f), Color.blue, timePassed / 1.0f);
+                    ui.marqueeText.color = Color.Lerp(Color.white.Alpha(0.0f), Color.blue, timePassed / 1.0f);
                     yield return null;
                 }
 
                 for (float timePassed = 0.0f; timePassed < 1.0f; timePassed += Time.deltaTime)
                 {
-                    marqueeText.color = Color.Lerp(Color.blue, Color.blue.Alpha(0.0f), timePassed / 1.0f);
+                    ui.marqueeText.color = Color.Lerp(Color.blue, Color.blue.Alpha(0.0f), timePassed / 1.0f);
                     yield return null;
                 }
 
                 // Clear marquee
-                marqueeText.Deactivate();
+                ui.marqueeText.Deactivate();
+
+                // Remove player threat
+                foreach (MapUnit unit in map.Units(UnitTeam.player))
+                    foreach (MapCell cell in unit.GetThreatArea().Select(map.CellAt))
+                        cell.RemoveThreat(unit);
 
                 // Begin player turn
                 game.ChangeState(new PlayerSelectUnit());
@@ -58,17 +62,15 @@ namespace SRPGDemo.Battle.Gameplay
         }
     }
 
-    class PlayerSelectUnit : GameControllerState
+    class PlayerSelectUnit : ShimmerState
     {
         #region Map highlighting
 
-        IEnumerable<PointyHexPoint> playerUnitLocs = null;
+        IEnumerable<MapCell> playerUnitCells = null;
 
         #endregion
 
         #region State implementation
-
-        GuiButton endTurnButton = null;
 
         public override void EnterState()
         {
@@ -79,15 +81,19 @@ namespace SRPGDemo.Battle.Gameplay
             }
             else
             {
-                playerUnitLocs = map.Units()
+                playerUnitCells = map.Units()
                     .Where(x => (x.team == UnitTeam.player) && (x.ap > 0))
-                    .Select(x => map.WhereIs(x));
+                    .Select(map.UnitCell);
 
-                MapHighlight.ClearMap();
-                MapHighlight.ShimmerRange(playerUnitLocs);
+                AddShimmer(playerUnitCells);
 
-                endTurnButton = gui.GetButton(GuiID.endTurnButton);
-                endTurnButton.Activate();
+                map.events.pointerEnter += PointerEnter;
+                map.events.pointerExit += PointerExit;
+                map.events.pointerClick += PointerClick;
+
+                ui.signal += GuiSignal;
+
+                ui.endTurnButton.Activate();
             }
 
             base.EnterState();
@@ -95,10 +101,10 @@ namespace SRPGDemo.Battle.Gameplay
 
         public override void LeaveState()
         {
-            MapHighlight.ClearMap();
+            ui.endTurnButton.Deactivate();
 
-            if (endTurnButton != null)
-                endTurnButton.Deactivate();
+            foreach (MapCell cell in playerUnitCells)
+                cell.tint = Color.white;
 
             base.LeaveState();
         }
@@ -107,108 +113,67 @@ namespace SRPGDemo.Battle.Gameplay
 
         #region Input handling
 
-        PointyHexPoint? selectedLoc = null;
-
-        public override void HexTouchedHandler(PointyHexPoint? loc)
+        void PointerEnter(PointerEventData eventData, GameObject child)
         {
-            MapHighlight.ClearMap();
-            MapHighlight.ShimmerRange(playerUnitLocs);
+            MapCell cell = child.GetComponent<MapCell>();
 
-            if (loc.HasValue && playerUnitLocs.Contains(loc.Value))
-                selectedLoc = loc;
-            else
-                selectedLoc = null;
-
-            if (selectedLoc.HasValue)
-                map.CellAt(selectedLoc.Value).SetTint(Color.green);
-        }
-
-        public override void LeftMouseHandler(bool state)
-        {
-            if (state && selectedLoc.HasValue)
-                game.ChangeState(new PlayerGiveOrder(
-                    map.CellAt(selectedLoc.Value).unitPresent));
-        }
-
-        public override void RightMouseHandler(bool state)
-        {
-        }
-
-        public override void GuiSignalHandler(GuiID signal)
-        {
-            switch (signal)
+            if (playerUnitCells.Contains(cell))
             {
-                case GuiID.endTurnButton:
-                    game.ChangeState(new EndPlayerTurn());
-                    break;
+                RemoveShimmer(cell);
+                cell.tint = Color.green;
+            }
+        }
+
+        void PointerExit(PointerEventData eventData, GameObject child)
+        {
+            MapCell cell = child.GetComponent<MapCell>();
+
+            if (playerUnitCells.Contains(cell))
+            {
+                AddShimmer(cell);
+                cell.tint = Color.white;
+            }
+        }
+
+        void PointerClick(PointerEventData eventData, GameObject child)
+        {
+            if (eventData.button == PointerEventData.InputButton.Left)
+            {
+                MapCell cell = child.GetComponent<MapCell>();
+
+                if (playerUnitCells.Contains(cell))
+                    game.ChangeState(new PlayerGiveOrder(
+                        cell.unitPresent));
+            }
+        }
+
+        void GuiSignal(GameObject child)
+        {
+            if (child.GetComponent<GuiButton>() == ui.endTurnButton)
+            {
+                game.ChangeState(new EndPlayerTurn());
             }
         }
 
         #endregion
     }
 
-    class PlayerGiveOrder : GameControllerState
+    class PlayerGiveOrder : ShimmerState
     {
         #region Map highlighting
 
-        MapUnit playerMobile = null;
+        MapUnit playerUnit = null;
 
-        public PlayerGiveOrder(MapUnit playerMobile)
+        IDictionary<HexCoords, PathNode> pathFlood = null;
+
+        public PlayerGiveOrder(MapUnit playerUnit)
         {
-            this.playerMobile = playerMobile;
-        }
-
-        private void PaintMap()
-        {
-            if (playerMobile != null)
-            {
-                playerMobile.PathFlood().ForEach(node =>
-                {
-                    switch (node.Value.passage)
-                    {
-                        case PassageType.open:
-                            MapHighlight.Shimmer(node.Key);
-                            break;
-                        case PassageType.inThreat:
-                            MapHighlight.Shimmer(node.Key, Color.red.Mix(Color.white));
-                            break;
-                    }
-                });
-            }
-        }
-
-        List<PointyHexPoint> lastPath = null;
-
-        private bool PaintPath(PointyHexPoint loc)
-        {
-            var pathFlood = playerMobile.PathFlood();
-
-            if (pathFlood.ContainsKey(loc))
-            {
-                map.CellAt(loc).SetTint(Color.blue);
-
-                lastPath = pathFlood[loc].PathTo()
-                    .Select(x => x.loc)
-                    .ToList();
-                lastPath.ForEach(x => map.CellAt(x).SetTint(Color.blue.Mix(Color.white)));
-
-                if (pathFlood[loc].passage == PassageType.inThreat)
-                    map.CellAt(loc).SetTint(Color.red.Mix(Color.white, 0.25f));
-
-                return true;
-            }
-            else
-            {
-                lastPath = null;
-                return false;
-            }
+            this.playerUnit = playerUnit;
         }
 
         #endregion
 
         #region State implementation
-
-        private GuiButton jumpButton = null;
 
         public override void EnterState()
         {
@@ -217,23 +182,55 @@ namespace SRPGDemo.Battle.Gameplay
             {
                 game.StartCoroutine(PlayerExt.PlayerLoses());
             }
-            else if (playerMobile.ap > 0)
+            else if (playerUnit.ap > 0)
             {
-                Debug.Log("Selected " + playerMobile.name);
+                Debug.Log("Selected " + playerUnit.name);
 
-                MapHighlight.ClearMap();
-                PaintMap();
-                if (game.mouseLoc.HasValue)
-                    PaintPath(game.mouseLoc.Value);
+                pathFlood = playerUnit.Dijkstra();
 
-                jumpButton = gui.GetButton(GuiID.jumpButton);
-                jumpButton.Activate();
+                IEnumerable<MapCell> floodCells = pathFlood.Values
+                    .Select(x => x.loc)
+                    .Select(map.CellAt);
+                IEnumerable<MapCell> threatCells = floodCells
+                    .Where(x => playerUnit.InThreat(x));
+
+                AddShimmer(floodCells);
+                foreach (MapCell cell in threatCells)
+                    cell.tint = Color.Lerp(Color.red, Color.white, 0.25f);
+
+                map.events.pointerEnter += PointerEnter;
+                map.events.pointerExit += PointerExit;
+                map.events.pointerClick += PointerClick;
+
+                ui.signal += GuiSignal;
+
+                game.mouseDown += MouseDown;
+
+                ui.jumpButton.Activate();
             }
             else
             {
-                Debug.Log("Tried to select " + playerMobile.name + ", no actions remaining.");
+                Debug.Log("Tried to select " + playerUnit.name + ", no actions remaining.");
                 game.StartCoroutine(ExitToSelectUnit());
             }
+
+            base.EnterState();
+        }
+
+        public override void LeaveState()
+        {
+            base.LeaveState();
+
+            if (pathFlood != null)
+            {
+                IEnumerable<MapCell> floodCells = pathFlood.Values
+                    .Select(x => x.loc)
+                    .Select(map.CellAt);
+                foreach (MapCell cell in floodCells)
+                    cell.tint = Color.white;
+            }
+
+            ui.jumpButton.Deactivate();
         }
 
         IEnumerator ExitToSelectUnit()
@@ -245,51 +242,74 @@ namespace SRPGDemo.Battle.Gameplay
             game.ChangeState(new PlayerSelectUnit());
         }
 
-        public override void LeaveState()
-        {
-            MapHighlight.ClearMap();
-
-            if (jumpButton != null)
-                jumpButton.Deactivate();
-        }
-
         #endregion
 
         #region Input handling
 
-        PointyHexPoint? selectedLoc = null;
-
-        public override void HexTouchedHandler(PointyHexPoint? loc)
+        void PointerEnter(PointerEventData eventData, GameObject child)
         {
-            MapHighlight.ClearMap();
-            PaintMap();
-            if (loc.HasValue && PaintPath(loc.Value))
-                selectedLoc = loc;
-            else
-                selectedLoc = null;
-        }
+            MapCell cell = child.GetComponent<MapCell>();
 
-        public override void LeftMouseHandler(bool state)
-        {
-            if (state && selectedLoc.HasValue)
+            if (pathFlood.ContainsKey(cell.loc))
             {
-                game.ChangeState(new MoveUnit(playerMobile, lastPath));
+                pathFlood[cell.loc].pathBack.Reverse();
+                IEnumerable<MapCell> pathCells = pathFlood[cell.loc].pathTo
+                    .Select(map.CellAt);
+                RemoveShimmer(pathCells);
+                foreach (MapCell pathCell in pathCells)
+                {
+                    if (playerUnit.InThreat(pathCell))
+                        pathCell.tint = Color.Lerp(Color.red, Color.white, 0.0f);
+                    else
+                        pathCell.tint = Color.Lerp(Color.blue, Color.white, 0.25f);
+                }
             }
         }
 
-        public override void RightMouseHandler(bool state)
+        void PointerExit(PointerEventData eventData, GameObject child)
         {
-            if (state) game.ChangeState(new PlayerSelectUnit());
+            MapCell cell = child.GetComponent<MapCell>();
+            if (pathFlood.ContainsKey(cell.loc))
+            {
+                IEnumerable<MapCell> pathCells = pathFlood[cell.loc].pathTo
+                    .Select(map.CellAt);
+                AddShimmer(pathCells);
+                foreach (MapCell pathCell in pathCells)
+                {
+                    if (playerUnit.InThreat(pathCell))
+                        pathCell.tint = Color.Lerp(Color.red, Color.white, 0.25f);
+                    else
+                        pathCell.tint = Color.white;
+                }
+            }
         }
 
-        public override void GuiSignalHandler(GuiID signal)
+        void PointerClick(PointerEventData eventData, GameObject child)
         {
-            switch (signal)
+            if (eventData.button == PointerEventData.InputButton.Left)
             {
-                case GuiID.jumpButton:
-                    game.ChangeState(new JumpChooseTarget(playerMobile));
-                    break;
+                MapCell cell = child.GetComponent<MapCell>();
+
+                if (pathFlood.ContainsKey(cell.loc))
+                {
+                    List<HexCoords> path = pathFlood[cell.loc].pathTo.Skip(1).ToList();
+                    game.ChangeState(new MoveUnit(playerUnit, path));
+                }
             }
+        }
+
+        void MouseDown(PointerEventData.InputButton mb)
+        {
+            if (mb == PointerEventData.InputButton.Right)
+            {
+                game.ChangeState(new PlayerSelectUnit());
+            }
+        }
+
+        void GuiSignal(GameObject child)
+        {
+            if (child.GetComponent<GuiButton>() == ui.jumpButton)
+                game.ChangeState(new JumpChooseTarget(playerUnit));
         }
 
         #endregion
@@ -301,6 +321,11 @@ namespace SRPGDemo.Battle.Gameplay
         {
             // Reset player APs for next turn
             map.Units(UnitTeam.player).ForEach(x => x.ap.Reset());
+
+            // Re-establish player threat
+            foreach (MapUnit unit in map.Units(UnitTeam.player))
+                foreach (MapCell cell in unit.GetThreatArea().Select(map.CellAt))
+                    cell.AddThreat(unit);
 
             // Stall for one frame before changing states
             yield return null;
@@ -315,7 +340,7 @@ namespace SRPGDemo.Battle.Gameplay
         public override IEnumerator AnimationCoroutine()
         {
             yield return null;
-            game.ChangeState(new EndBattle());
+            game.LoadSceneByName("Main Menu");
         }
     }
 }

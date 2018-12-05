@@ -1,56 +1,12 @@
 ﻿using System.Linq;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Profiling;
-using Gamelogic.Grids;
-using Gamelogic.Extensions;
+using GridLib.Hex;
 using SRPGDemo.Extensions;
+using UnityEngine.UI;
 
 namespace SRPGDemo.Battle.Map
 {
-    public static class MapHighlight
-    {
-        public static void ClearMap()
-        {
-            foreach (PointyHexPoint point in Controllers.map.cache.mapGrid)
-            {
-                Controllers.map.cache.CellAt(point).ClearTint();
-            }
-        }
-
-        public static void Shimmer(PointyHexPoint loc)
-        {
-            Controllers.map.cache.CellAt(loc).SetTint(
-                Color.white,
-                ColorExt.Grayscale(0.5f),
-                0.25f);
-        }
-
-        public static void Shimmer(PointyHexPoint loc, Color color)
-        {
-            Controllers.map.cache.CellAt(loc).SetTint(
-                color,
-                color.Mix(Color.black),
-                0.25f);
-        }
-
-        public static void TintRange(IEnumerable<PointyHexPoint> locs, Color color)
-        {
-            locs.Select(Controllers.map.cache.CellAt).ForEach(x => x.SetTint(color));
-        }
-
-        public static void ShimmerRange(IEnumerable<PointyHexPoint> locs)
-        {
-            locs.ForEach(x => Shimmer(x));
-        }
-
-        public static void ShimmerRange(IEnumerable<PointyHexPoint> locs, Color color)
-        {
-            locs.ForEach(x => Shimmer(x, color));
-        }
-    }
-    
     public enum TerrainType
     {
         open,
@@ -60,7 +16,7 @@ namespace SRPGDemo.Battle.Map
 
     [AddComponentMenu("SRPG Demo/Battle/Map Cell")]
     [RequireComponent(typeof(SpriteRenderer))]
-    public class MapCell : TileCell
+    public class MapCell : HexGridCell
     {
         // Universal
 
@@ -68,73 +24,22 @@ namespace SRPGDemo.Battle.Map
 
         #region Shorthands
 
-        private MapController map { get { return Controllers.map; } }
-        public PointyHexPoint loc
+        private MapController map { get { return MapController.instance; } }
+
+        public IEnumerable<MapCell> neighbors { get { return loc.neighbors.Where(map.InBounds).Select(map.CellAt); } }
+
+
+        private SpriteRenderer _spriteRenderer = null;
+        public SpriteRenderer spriteRenderer
         {
             get
             {
-                Profiler.BeginSample("MapCell.loc");
-
-                PointyHexPoint result = map.WhereIs(this);
-
-                Profiler.EndSample();
-
-                return result;
+                if (_spriteRenderer == null) _spriteRenderer = GetComponent<SpriteRenderer>();
+                return _spriteRenderer;
             }
         }
-
-        public IEnumerable<MapCell> GetNeighbors()
-        {
-            Profiler.BeginSample("MapCell.GetNeighbors()");
-
-            IEnumerable<MapCell> result = map.WhereIs(this).GetNeighbors()
-                .Where(map.InBounds)
-                .Select(map.CellAt);
-
-            Profiler.EndSample();
-
-            return result;
-        }
-
-        #endregion
-
-        #region TileCell implementation
-
-        public override void __UpdatePresentation(bool forceUpdate = false)
-        {
-            if (forceUpdate) UpdatePresentation();
-        }
-
-        public override Color Color
-        {
-            get
-            {
-                return spriteRenderer.color;
-            }
-
-            set
-            {
-                spriteRenderer.color = value;
-            }
-        }
-
-        public override Vector2 Dimensions
-        {
-            get
-            {
-                return spriteRenderer.bounds.size;
-            }
-        }
-
-        public override void SetAngle(float angle)
-        {
-            spriteRenderer.transform.SetLocalRotationZ(angle);
-        }
-
-        public override void AddAngle(float angle)
-        {
-            spriteRenderer.transform.RotateAroundZ(angle);
-        }
+        
+        public Text debugText = null;
 
         #endregion
 
@@ -146,87 +51,56 @@ namespace SRPGDemo.Battle.Map
         }
 
         #endregion
-
-        #region Sprite passthrough
-
-        private SpriteRenderer _spriteRenderer = null;
-        public SpriteRenderer spriteRenderer
-        {
-            get
-            {
-                if (_spriteRenderer == null) _spriteRenderer = GetComponent<SpriteRenderer>();
-                return _spriteRenderer;
-            }
-        }
-
-        #endregion
-
+        
         #region Tint controls
 
-        private IEnumerator TintShifter(Color startColor, Color endColor, float cycleTime)
+        private Color _tint = Color.white;
+        public Color tint
         {
-            Color a = startColor;
-            Color b = endColor;
-
-            while (true)
+            get { return _tint; }
+            set
             {
-                for (float timeElapsed = 0.0f; timeElapsed < cycleTime; timeElapsed += Time.deltaTime)
-                {
-                    spriteRenderer.color = Color.Lerp(a, b, timeElapsed / cycleTime);
-                    yield return null;
-                }
-
-                Color swap = a;
-                a = b;
-                b = swap;
+                _tint = value;
+                UpdatePresentation();
             }
         }
 
-        private Coroutine tintShifter = null;
+        private Color tintDark { get { return Color.Lerp(tint, Color.black, 0.5f); } }
 
-        public void SetTint(Color color)
+        private float _tintLerp = 0.0f;
+        public float tintLerp
         {
-            ClearTint();
-
-            spriteRenderer.color = color;
-        }
-
-        public void SetTint(Color startColor, Color endColor, float cycleTime = 1.0f)
-        {
-            ClearTint();
-
-            tintShifter = StartCoroutine(TintShifter(startColor, endColor, cycleTime));
-        }
-
-        public void ClearTint()
-        {
-            if (tintShifter != null)
+            get { return _tintLerp; }
+            set
             {
-                StopCoroutine(tintShifter);
-                tintShifter = null;
+                _tintLerp = value;
+                UpdatePresentation();
             }
-
-            spriteRenderer.color = Color.white;
         }
 
         #endregion
-       
+
         // Implementation-specific
-        
+
         #region Pathfinding information
 
-        public List<MapUnit> threatList = new List<MapUnit>();
-        public List<MapUnit> neighborUnitList = new List<MapUnit>();
+        public HashSet<MapUnit> threatSet = new HashSet<MapUnit>();
 
-        private List<MapCell> blockingNeighborList = new List<MapCell>();
-        public bool hasBlockingNeighbors
+        public void AddThreat(MapUnit threat)
         {
-            get { return blockingNeighborList.Any(); }
+            threatSet.Add(threat);
+            UpdatePresentation();
+        }
+
+        public void RemoveThreat(MapUnit threat)
+        {
+            threatSet.Remove(threat);
+            UpdatePresentation();
         }
 
         #endregion
 
-        #region Presentation Properties
+        #region Presentation properties
 
         public Sprite walkableSprite = null;
         public Sprite nonWalkableSprite = null;
@@ -237,21 +111,7 @@ namespace SRPGDemo.Battle.Map
             get { return _terrainType; }
             set
             {
-                bool wasBlocking = isBlocking;
                 _terrainType = value;
-                if (wasBlocking != isBlocking)
-                {
-                    if (isBlocking)
-                        Controllers.map.cache.WhereIs(this).GetNeighbors()
-                            .Where(Controllers.map.cache.InBounds)
-                            .Select(Controllers.map.cache.CellAt)
-                            .ForEach(x => x.blockingNeighborList.Add(this));
-                    else
-                        Controllers.map.cache.WhereIs(this).GetNeighbors()
-                            .Where(Controllers.map.cache.InBounds)
-                            .Select(Controllers.map.cache.CellAt)
-                            .ForEach(x => x.blockingNeighborList.Remove(this));
-                }
                 UpdatePresentation();
             }
         }
@@ -273,7 +133,7 @@ namespace SRPGDemo.Battle.Map
             }
         }
 
-        public bool isBlocking    
+        public bool isBlocking
         {
             get
             {
@@ -301,6 +161,16 @@ namespace SRPGDemo.Battle.Map
                     spriteRenderer.sprite = nonWalkableSprite;
                     break;
             }
+
+            if (debugText != null)
+            {
+                debugText.text = loc.ToString();
+                
+                foreach (MapUnit unit in threatSet)
+                    debugText.text += "\nT: " + unit.name;
+            }
+
+            spriteRenderer.color = Color.Lerp(tint, tintDark, tintLerp);
         }
 
         #endregion

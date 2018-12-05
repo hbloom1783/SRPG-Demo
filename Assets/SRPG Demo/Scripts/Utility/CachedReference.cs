@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-namespace SRPGDemo.Utility
+﻿namespace SRPGDemo.Utility
 {
     public class CachedReference<T> where T : class
     {

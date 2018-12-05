@@ -1,39 +1,41 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Linq;
 using UnityEngine;
-using Gamelogic.Grids;
+using GridLib.Hex;
 using SRPGDemo.Extensions;
-using Random = UnityEngine.Random;
+using SRPGDemo.Battle.Map.Pathing;
 
 namespace SRPGDemo.Battle.Map
 {
     [AddComponentMenu("SRPG Demo/Battle/Map Generators/Unit Spawner")]
-    public class UnitSpawner : MapGenerator
+    public class UnitSpawner : HexGridInitializer<MapCell>
     {
         public MapUnit unitPrefab = null;
         public MapUnitRecipe unitRecipe = null;
         public UnitTeam team;
         public int count = 1;
 
-        protected override void InnerGenerate()
+        public override void InitGrid(HexGridManager<MapCell> grid, bool isPlaying)
         {
-            if ((unitPrefab != null) && (unitRecipe != null))
+            MapController map = (MapController)grid;
+            
+            if (isPlaying && (unitPrefab != null) && (unitRecipe != null))
             {
-                Debug.Log("Spawning " + count + " " + unitPrefab.name);
+                Debug.Log("Spawning " + count + " " + unitPrefab.name + " (" + unitRecipe.name + ")");
                 for (int idx = 0; idx < count; idx++)
                 {
                     MapUnit newUnit = Instantiate(unitPrefab);
-                    newUnit.facing = Facing.e.CW((uint)Random.Range(0, 5));
+                    newUnit.facing = HexFacingMethods.random;
                     newUnit.team = team;
                     newUnit.LoadRecipe(unitRecipe);
 
-                    PointyHexPoint spawnLoc = map.mapGrid.ToPointList()
-                        .Where(x => unitPrefab.CanStayIn(map.CellAt(x)))
+                    HexCoords spawnLoc = map.coords
+                        .Where(unitPrefab.CanEnter)
+                        .Where(unitPrefab.CanStay)
                         .RandomPick();
-
+                    
                     map.PlaceUnit(newUnit, spawnLoc);
+                    foreach (MapCell cell in newUnit.GetThreatArea().Select(map.CellAt))
+                        cell.AddThreat(newUnit);
                 }
             }
         }

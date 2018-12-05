@@ -11,3 +11,6 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/SRPG Demo/Scenes/Battle.unity
     guid: aac5f27a8e15f434388d818c45969807
+  - enabled: 1
+    path: Assets/SRPG Demo/Scenes/Strategic.unity
+    guid: c760ecb91495dee47a1bf20c34954fe6

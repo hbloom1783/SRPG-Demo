@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Linq;
 using System.Collections.Generic;
-using UnityEngine;
 using Random = UnityEngine.Random;
 
 namespace SRPGDemo.Extensions
@@ -10,14 +9,12 @@ namespace SRPGDemo.Extensions
     {
         public static T RandomPick<T>(this IEnumerable<T> input)
         {
-            List<T> list = new List<T>(input);
-            return list[Random.Range(0, list.Count - 1)];
+            return input.ToList().RandomPick();
         }
 
         public static T RandomPick<T>(this ICollection<T> input)
         {
-            List<T> list = new List<T>(input);
-            return list[Random.Range(0, list.Count - 1)];
+            return input.ElementAt(Random.Range(0, input.Count - 1));
         }
 
         public static T RandomTake<T>(this ICollection<T> input)

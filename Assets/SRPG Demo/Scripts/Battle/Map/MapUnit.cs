@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
 using UnityEngine.Profiling;
-using Gamelogic.Grids;
-using SRPGDemo.Battle.GUI;
-using SRPGDemo.Battle.Gameplay;
-using SRPGDemo.Utility;
+using GridLib.Hex;
+using SRPGDemo.Battle.UI;
 
 namespace SRPGDemo.Battle.Map
 {
@@ -29,11 +25,10 @@ namespace SRPGDemo.Battle.Map
     {
         #region Shorthands
 
-        private MapController map { get { return Controllers.map; } }
-        private GameController game { get { return Controllers.game; } }
+        private MapController map { get { return MapController.instance; } }
 
         #endregion
-
+    
         #region Presentation
 
         private SpriteRenderer _spriteRenderer = null;
@@ -46,65 +41,43 @@ namespace SRPGDemo.Battle.Map
             }
         }
 
-        private Facing _facing = Facing.bad;
-        public Facing facing
+        private HexFacing _facing = HexFacing.bad;
+        public HexFacing facing
         {
             get { return _facing; }
             set
             {
                 _facing = value;
-                if (map.HasUnit(this)) map.ReseatUnit(this);
+                //if (map.HasUnit(this)) map.ReseatUnit(this);
                 UpdatePresentation();
             }
         }
 
         private void UpdatePresentation()
         {
-            switch (facing)
-            {
-                case Facing.ne:
-                case Facing.e:
-                case Facing.se:
-                    spriteRenderer.flipX = false;
-                    break;
+            if ((facing == HexFacing.yz) ||
+                (facing == HexFacing.xz) ||
+                (facing == HexFacing.xy))
+                spriteRenderer.flipX = false;
 
-                case Facing.nw:
-                case Facing.w:
-                case Facing.sw:
-                    spriteRenderer.flipX = true;
-                    break;
-            }
+            if ((facing == HexFacing.yx) ||
+                (facing == HexFacing.zx) ||
+                (facing == HexFacing.zy))
+                spriteRenderer.flipX = true;
         }
 
         #endregion
 
         #region Temporary GUI stuff
 
-        private static GuiText PlayerDebugTextGetter()
-        {
-            return Controllers.gui.cache.GetText(GuiID.playerDebugText);
-        }
-        private CachedReference<GuiText> playerDebugText =
-            new CachedReference<GuiText>(PlayerDebugTextGetter);
-
-        private static GuiText EnemyDebugTextGetter()
-        {
-            return Controllers.gui.cache.GetText(GuiID.enemyDebugText);
-        }
-        private CachedReference<GuiText> enemyDebugText =
-            new CachedReference<GuiText>(EnemyDebugTextGetter);
-
         private void UpdateGUI()
         {
-            if ((playerDebugText.cache != null) && (enemyDebugText.cache != null))
-            {
-                // DEBUG OUTPUT
-                if (team == UnitTeam.player)
-                    playerDebugText.cache.text = "Player: " + hp.value + "/" + hp.max;
-                else if (team == UnitTeam.enemy)
-                    enemyDebugText.cache.text = "Enemy: " + hp.value + "/" + hp.max;
-                // DEBUG OUTPUT
-            }
+            // DEBUG OUTPUT
+            if (team == UnitTeam.player)
+                GuiController.instance.playerDebugText.text = "Player: " + hp.value + "/" + hp.max;
+            else if (team == UnitTeam.enemy)
+                GuiController.instance.enemyDebugText.text = "Enemy: " + hp.value + "/" + hp.max;
+            // DEBUG OUTPUT
         }
 
         #endregion
@@ -120,11 +93,11 @@ namespace SRPGDemo.Battle.Map
         public Capacitor hp;
         public Capacitor ap;
 
-        private int move;
-        private int jump;
+        private uint move;
+        private uint jump;
 
-        public int moveRange { get { return move; } }
-        public int jumpRange
+        public uint moveRange { get { return move; } }
+        public uint jumpRange
         {
             get
             {
@@ -151,18 +124,35 @@ namespace SRPGDemo.Battle.Map
 
             size = recipe.size;
         }
+        
+        public void ResetForPool()
+        {
+            spriteRenderer.sprite = null;
+
+            attackSound = null;
+            jumpSound = null;
+            runSound = null;
+
+            hp = null;
+            ap = null;
+
+            move = 0;
+            jump = 0;
+
+            size = UnitSize.small;
+        }
 
         #endregion
 
         #region Areas
 
-        public PointyHexPoint loc
+        public HexCoords loc
         {
             get
             {
-                Profiler.BeginSample("MapUnit.loc");
+                Profiler.BeginSample("Battle.MapUnit.loc");
 
-                PointyHexPoint result = map.WhereIs(this);
+                HexCoords result = map.WhereIs(this);
 
                 Profiler.EndSample();
 
@@ -170,56 +160,59 @@ namespace SRPGDemo.Battle.Map
             }
         }
 
-        public IEnumerable<PointyHexPoint> GetHardblockArea()
+        public IEnumerable<HexCoords> GetHardblockArea()
         {
             if (size == UnitSize.small)
-                return new List<PointyHexPoint>();
+                return new List<HexCoords>();
             else if (size == UnitSize.large)
-                return map.GetCircle(loc, 0, 0).Where(map.InBounds);
+                return loc.Ring(0).Where(map.InBounds);
             else
                 return null;
         }
 
-        public IEnumerable<PointyHexPoint> GetSoftblockArea()
+        public IEnumerable<HexCoords> GetSoftblockArea()
         {
             if (size == UnitSize.small)
-                return map.GetCircle(loc, 0, 0).Where(map.InBounds);
+                return loc.Ring(0).Where(map.InBounds);
             else if (size == UnitSize.large)
-                return map.GetCircle(loc, 1, 1).Where(map.InBounds);
+                return loc.Ring(1).Where(map.InBounds);
             else
                 return null;
         }
 
-        public IEnumerable<PointyHexPoint> GetThreatArea()
+        public IEnumerable<HexCoords> GetThreatArea()
         {
             if (size == UnitSize.small)
-                return map.GetCircle(loc, 1, 1).Where(map.InBounds);
+                return loc.Ring(1).Where(map.InBounds);
             else if (size == UnitSize.large)
-                return map.GetArc(loc, facing.CCW(2), facing.CW(2), 2, 2).Where(map.InBounds);
+            {
+                var b = facing.Rotate(-2);
+                var e = facing.Rotate(2);
+                var q = loc.Arc(2, facing.Rotate(-2), facing.Rotate(2)).Where(map.InBounds).ToList();
+                return loc.Arc(2, facing.Rotate(-2), facing.Rotate(2)).Where(map.InBounds);
+            }
             else
                 return null;
         }
 
-        public IEnumerable<PointyHexPoint> GetAttackArea()
+        public IEnumerable<HexCoords> GetAttackArea()
         {
             if (size == UnitSize.small)
-                return map.GetCircle(loc, 1, 1).Where(map.InBounds);
+                return loc.Ring(1).Where(map.InBounds);
             else if (size == UnitSize.large)
-                return map.GetCircle(loc, 2, 2).Where(map.InBounds);
+                return loc.Ring(2).Where(map.InBounds);
             else
                 return null;
         }
 
-        public IEnumerable<PointyHexPoint> GetLandingArea(MapUnit target)
+        public IEnumerable<HexCoords> GetLandingArea(MapUnit target)
         {
-            PointyHexPoint targetLoc = map.WhereIs(target);
+            HexCoords targetLoc = map.WhereIs(target);
 
             if ((target.size == UnitSize.small) && (size == UnitSize.small))
-                return map.GetCircle(targetLoc, 1, 1)
-                    .Where(map.InBounds);
+                return targetLoc.Ring(1).Where(map.InBounds);
             else
-                return map.GetCircle(targetLoc, 2, 2)
-                    .Where(map.InBounds);
+                return targetLoc.Ring(2).Where(map.InBounds);
         }
 
         #endregion
@@ -243,7 +236,7 @@ namespace SRPGDemo.Battle.Map
             Destroy(gameObject);
         }
 
-        public void Face(PointyHexPoint loc)
+        public void Face(HexCoords loc)
         {
             facing = this.loc.FacingTo(loc);
         }
@@ -265,8 +258,8 @@ namespace SRPGDemo.Battle.Map
 
         void OnDestroy()
         {
-            if (Controllers.map != null)
-                Controllers.map.cache.UnplaceUnit(this);
+            if (MapController.instance != null)
+                MapController.instance.UnplaceUnit(this);
         }
 
         #endregion

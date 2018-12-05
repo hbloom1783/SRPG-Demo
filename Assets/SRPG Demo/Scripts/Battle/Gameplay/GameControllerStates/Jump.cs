@@ -2,17 +2,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using Gamelogic.Grids;
 using SRPGDemo.Battle.Map;
-using SRPGDemo.Battle.GUI;
-using SRPGDemo.Extensions;
+using SRPGDemo.Battle.Map.Pathing;
+using GridLib.Hex;
+using UnityEngine.EventSystems;
+using SRPGDemo.Battle.Gameplay.Extensions;
 
 namespace SRPGDemo.Battle.Gameplay
 {
-    using Extensions;
-
     public static class JumpHelpers
     {
+        private static MapController map { get { return MapController.instance; } }
+
         public static bool CanJumpOn(this MapUnit unit, MapUnit other)
         {
             if (other == null)
@@ -20,37 +21,55 @@ namespace SRPGDemo.Battle.Gameplay
             else if (unit.team == other.team)
                 return false;
             else
-                return unit.GetLandingArea(other).Where(unit.CanStayIn).Count() > 0;
+                return unit.GetLandingArea(other)
+                    .Select(map.CellAt)
+                    .Where(unit.CanStay)
+                    .Count() > 0;
         }
     }
 
-    class JumpChooseTarget : GameControllerState
+    class JumpChooseTarget : ShimmerState
     {
         #region State implementation
 
         public override void EnterState()
         {
-            List<PointyHexPoint> jumpArea = map.Map
-                .GetCircle(map.WhereIs(unit), 1, unit.jumpRange)
+            List<HexCoords> jumpArea = map.WhereIs(unit)
+                .CompoundRing(1, unit.jumpRange)
                 .Where(map.InBounds)
                 .ToList();
 
             jumpMoveArea = jumpArea
-                .Where(x => unit.CanStayIn(map.CellAt(x)))
+                .Where(unit.CanEnter)
+                .Where(unit.CanStay)
+                .Select(map.CellAt)
                 .ToList();
 
             jumpAttackArea = jumpArea
                 .Where(x => unit.CanJumpOn(map.UnitAt(x)))
+                .Select(map.CellAt)
                 .ToList();
 
-            MapHighlight.ClearMap();
-            MapHighlight.ShimmerRange(jumpMoveArea);
-            MapHighlight.ShimmerRange(jumpAttackArea, Color.green.Mix(Color.white));
+            map.events.pointerEnter += PointerEnter;
+            map.events.pointerExit += PointerExit;
+            map.events.pointerClick += PointerClick;
+
+            game.mouseDown += MouseDown;
+
+            AddShimmer(jumpMoveArea);
+            AddShimmer(jumpAttackArea);
+            foreach (MapCell cell in jumpAttackArea)
+                cell.tint = Color.Lerp(Color.green, Color.white, 0.5f);
+
+            base.EnterState();
         }
 
         public override void LeaveState()
         {
-            MapHighlight.ClearMap();
+            base.LeaveState();
+
+            foreach (MapCell cell in jumpAttackArea)
+                cell.tint = Color.white;
         }
 
         #endregion
@@ -64,131 +83,147 @@ namespace SRPGDemo.Battle.Gameplay
             this.unit = unit;
         }
 
-        private List<PointyHexPoint> jumpMoveArea;
-        private List<PointyHexPoint> jumpAttackArea;
+        private List<MapCell> jumpMoveArea;
+        private List<MapCell> jumpAttackArea;
 
-        private PointyHexPoint? selectedLoc = null;
-        private bool isAttack = false;
-
-        public override void HexTouchedHandler(PointyHexPoint? loc)
+        public void PointerEnter(PointerEventData eventData, GameObject child)
         {
-            MapHighlight.ClearMap();
-            MapHighlight.ShimmerRange(jumpMoveArea);
-            MapHighlight.ShimmerRange(jumpAttackArea, Color.green.Mix(Color.white));
-
-            if (loc.HasValue)
+            MapCell cell = child.GetComponent<MapCell>();
+            if (jumpMoveArea.Contains(cell) || jumpAttackArea.Contains(cell))
             {
-                if (jumpMoveArea.Contains(loc.Value))
-                {
-                    selectedLoc = loc;
-                    isAttack = false;
-                }
-                else if (jumpAttackArea.Contains(loc.Value))
-                {
-                    selectedLoc = loc;
-                    isAttack = true;
-                }
-
-                if (selectedLoc.HasValue)
-                    map.CellAt(selectedLoc.Value).SetTint(Color.green);
+                RemoveShimmer(cell);
+                cell.tint = Color.green;
             }
-            else
+
+        }
+
+        public void PointerExit(PointerEventData eventData, GameObject child)
+        {
+            MapCell cell = child.GetComponent<MapCell>();
+            if (jumpMoveArea.Contains(cell) || jumpAttackArea.Contains(cell))
             {
-                selectedLoc = null;
+                AddShimmer(cell);
+                if (jumpMoveArea.Contains(cell))
+                    cell.tint = Color.white;
+                else if (jumpAttackArea.Contains(cell))
+                    cell.tint = Color.Lerp(Color.green, Color.white, 0.5f);
             }
         }
 
-        public override void LeftMouseHandler(bool state)
+        public void PointerClick(PointerEventData eventData, GameObject child)
         {
-            if (state && selectedLoc.HasValue)
+            if (eventData.button == PointerEventData.InputButton.Left)
             {
-                if (isAttack)
-                    game.ChangeState(new JumpChooseLanding(
-                        unit,
-                        map.UnitAt(selectedLoc.Value)));
-                else
+                MapCell cell = child.GetComponent<MapCell>();
+
+                if (jumpMoveArea.Contains(cell))
+                {
+                    cell.tint = Color.white;
                     game.ChangeState(new JumpMove(
                         unit,
-                        selectedLoc.Value));
+                        cell.loc));
+                }
+                else if (jumpAttackArea.Contains(cell))
+                {
+                    cell.tint = Color.white;
+                    game.ChangeState(new JumpChooseLanding(
+                        unit,
+                        map.UnitAt(cell.loc)));
+                }
             }
         }
 
-        public override void RightMouseHandler(bool state)
+        void MouseDown(PointerEventData.InputButton mb)
         {
-            if (state) game.ChangeState(new PlayerGiveOrder(unit));
-        }
-
-        public override void GuiSignalHandler(GuiID signal)
-        {
+            if (mb == PointerEventData.InputButton.Right)
+            {
+                game.ChangeState(new PlayerGiveOrder(unit));
+            }
         }
 
         #endregion
     }
 
-    class JumpChooseLanding : GameControllerState
+    class JumpChooseLanding : ShimmerState
     {
         #region State implementation
 
         private MapUnit unit;
         private MapUnit target;
-        private IEnumerable<PointyHexPoint> landingArea;
+        private IEnumerable<MapCell> landingArea;
 
         public JumpChooseLanding(MapUnit unit, MapUnit target)
         {
             this.unit = unit;
             this.target = target;
-            landingArea = unit.GetLandingArea(target).Where(unit.CanStayIn);
+            landingArea = unit.GetLandingArea(target)
+                .Where(unit.CanStay)
+                .Select(map.CellAt);
         }
 
         public override void EnterState()
         {
-            MapHighlight.ClearMap();
-            MapHighlight.ShimmerRange(landingArea);
+            AddShimmer(landingArea);
+
+            map.events.pointerEnter += PointerEnter;
+            map.events.pointerExit += PointerExit;
+            map.events.pointerClick += PointerClick;
+
+            game.mouseDown += MouseDown;
+
+            base.EnterState();
         }
 
         public override void LeaveState()
         {
-            MapHighlight.ClearMap();
+            base.LeaveState();
         }
 
         #endregion
 
         #region Input handling
 
-        PointyHexPoint? selectedLoc = null;
-
-        public override void HexTouchedHandler(PointyHexPoint? loc)
+        public void PointerEnter(PointerEventData eventData, GameObject child)
         {
-            MapHighlight.ClearMap();
-            MapHighlight.ShimmerRange(landingArea);
-
-            if (loc.HasValue && landingArea.Contains(loc.Value))
+            MapCell cell = child.GetComponent<MapCell>();
+            if (landingArea.Contains(cell))
             {
-                selectedLoc = loc;
-                map.CellAt(selectedLoc.Value).SetTint(Color.green);
-            }
-            else
-            {
-                selectedLoc = null;
+                RemoveShimmer(cell);
+                cell.tint = Color.green;
             }
         }
 
-        public override void LeftMouseHandler(bool state)
+        public void PointerExit(PointerEventData eventData, GameObject child)
         {
-            if (state && selectedLoc.HasValue)
+            MapCell cell = child.GetComponent<MapCell>();
+            if (landingArea.Contains(cell))
             {
-                game.ChangeState(new JumpAttack(
-                    unit, target, selectedLoc.Value));
+                cell.tint = Color.white;
+                AddShimmer(cell);
             }
         }
 
-        public override void RightMouseHandler(bool state)
+        public void PointerClick(PointerEventData eventData, GameObject child)
         {
-            if (state) game.ChangeState(new JumpChooseTarget(unit));
+            if (eventData.button == PointerEventData.InputButton.Left)
+            {
+                MapCell cell = child.GetComponent<MapCell>();
+
+                if (landingArea.Contains(cell))
+                {
+                    cell.tint = Color.white;
+                    game.ChangeState(new JumpAttack(
+                        unit, target, cell.loc));
+                }
+            }
         }
 
-        public override void GuiSignalHandler(GuiID signal)
+        void MouseDown(PointerEventData.InputButton mb)
         {
+            if (mb == PointerEventData.InputButton.Right)
+            {
+                game.ChangeState(new JumpChooseTarget(unit));
+            }
         }
 
         #endregion
@@ -197,11 +232,11 @@ namespace SRPGDemo.Battle.Gameplay
     class JumpMove : GameControllerAnimation
     {
         private MapUnit unit;
-        private PointyHexPoint newLoc;
+        private HexCoords newLoc;
 
         public JumpMove(
             MapUnit unit,
-            PointyHexPoint newLoc)
+            HexCoords newLoc)
         {
             this.unit = unit;
             this.newLoc = newLoc;
@@ -211,14 +246,14 @@ namespace SRPGDemo.Battle.Gameplay
         {
             game.PlaySound(unit.jumpSound);
 
-            PointyHexPoint oldLoc = map.WhereIs(unit);
+            HexCoords oldLoc = map.WhereIs(unit);
 
             yield return unit.AnimateParabolicMove(
                 oldLoc,
                 newLoc);
 
             map.UnplaceUnit(unit);
-            map.PlaceUnit(unit, map.mapGrid[newLoc]);
+            map.PlaceUnit(unit, newLoc);
             unit.ap.Increment(-1);
 
             yield return null;
@@ -234,12 +269,12 @@ namespace SRPGDemo.Battle.Gameplay
     {
         private MapUnit unit;
         private MapUnit target;
-        private PointyHexPoint landingLoc;
+        private HexCoords landingLoc;
 
         public JumpAttack(
             MapUnit unit,
             MapUnit target,
-            PointyHexPoint landingLoc)
+            HexCoords landingLoc)
         {
             this.unit = unit;
             this.target = target;
@@ -250,8 +285,8 @@ namespace SRPGDemo.Battle.Gameplay
         {
             game.PlaySound(unit.jumpSound);
 
-            PointyHexPoint oldLoc = map.WhereIs(unit);
-            PointyHexPoint targetLoc = map.WhereIs(target);
+            HexCoords oldLoc = map.WhereIs(unit);
+            HexCoords targetLoc = map.WhereIs(target);
             
             yield return unit.AnimateParabolicMove(
                 oldLoc,
@@ -267,7 +302,7 @@ namespace SRPGDemo.Battle.Gameplay
                 1.0f);
 
             map.UnplaceUnit(unit);
-            map.PlaceUnit(unit, map.mapGrid[landingLoc]);
+            map.PlaceUnit(unit, map[landingLoc]);
             unit.ap.Increment(-1);
 
             yield return null;

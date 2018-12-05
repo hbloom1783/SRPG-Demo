@@ -1,20 +1,18 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
-using Gamelogic.Grids;
 using SRPGDemo.Extensions;
 using SRPGDemo.Battle.Map;
-using SRPGDemo.Battle.GUI;
+using SRPGDemo.Battle.Map.Pathing;
+using GridLib.Hex;
 
 namespace SRPGDemo.Battle.Gameplay
 {
     public static class UnitAIExt
     {
-        private static MapController map = Controllers.map;
-        private static GameController game = Controllers.game;
+        private static MapController map = MapController.instance;
+        private static GameController game = GameController.instance;
 
         public static void PickAction(this MapUnit unit)
         {
@@ -33,11 +31,9 @@ namespace SRPGDemo.Battle.Gameplay
             else
             {
                 //If there's a player unit, move towards them
-                IEnumerable<MapUnit> moveTargets = map.Units()
-                    .Where(x => x.team == UnitTeam.player);
-
-                MapUnit target = moveTargets
-                    .RandomPickMin(x => unit.loc.DistanceFrom(map.WhereIs(x)));
+                MapUnit target = map
+                    .Units(UnitTeam.player)
+                    .RandomPickMin(x => unit.loc.DistanceTo(map.WhereIs(x)));
 
                 unit.MoveTowards(target);
             }
@@ -50,14 +46,14 @@ namespace SRPGDemo.Battle.Gameplay
 
         public static void MoveTowards(this MapUnit unit, MapUnit target)
         {
-            PointyHexPoint targetLoc = map.WhereIs(target);
+            HexCoords targetLoc = map.WhereIs(target);
 
-            Dictionary<PointyHexPoint, PathNode> pathFlood = unit.PathFlood();
-            PointyHexPoint destination = pathFlood.Keys.RandomPickMin(x => x.DistanceFrom(targetLoc));
+            IDictionary<HexCoords, PathNode> pathFlood = unit.Dijkstra();
+            HexCoords destination = pathFlood.Keys.RandomPickMin(x => x.DistanceTo(targetLoc));
 
             game.ChangeState(new MoveUnit(
                 unit,
-                pathFlood[destination].PathTo().Select(x => x.loc)));
+                pathFlood[destination].pathTo));
         }
     }
 
@@ -66,7 +62,7 @@ namespace SRPGDemo.Battle.Gameplay
         public static IEnumerator EnemyLoses()
         {
             yield return null;
-            Controllers.game.cache.ChangeState(new PlayerWins());
+            GameController.instance.ChangeState(new PlayerWins());
         }
     }
 
@@ -81,27 +77,30 @@ namespace SRPGDemo.Battle.Gameplay
             }
             else
             {
-                GuiText marqueeText = gui.GetText(GuiID.marqueeText);
-
                 // Display marquee
-                marqueeText.Activate();
-                marqueeText.text = "Enemy Turn";
-                marqueeText.color = Color.white.Alpha(0.0f);
+                ui.marqueeText.Activate();
+                ui.marqueeText.text = "Enemy Turn";
+                ui.marqueeText.color = Color.white.Alpha(0.0f);
 
                 for (float timePassed = 0.0f; timePassed < 1.0f; timePassed += Time.deltaTime)
                 {
-                    marqueeText.color = Color.Lerp(Color.white.Alpha(0.0f), Color.red, timePassed / 1.0f);
+                    ui.marqueeText.color = Color.Lerp(Color.white.Alpha(0.0f), Color.red, timePassed / 1.0f);
                     yield return null;
                 }
 
                 for (float timePassed = 0.0f; timePassed < 1.0f; timePassed += Time.deltaTime)
                 {
-                    marqueeText.color = Color.Lerp(Color.red, Color.red.Alpha(0.0f), timePassed / 1.0f);
+                    ui.marqueeText.color = Color.Lerp(Color.red, Color.red.Alpha(0.0f), timePassed / 1.0f);
                     yield return null;
                 }
 
                 // Clear marquee
-                marqueeText.Deactivate();
+                ui.marqueeText.Deactivate();
+
+                // Remove enemy threat
+                foreach (MapUnit unit in map.Units(UnitTeam.enemy))
+                    foreach (MapCell cell in unit.GetThreatArea().Select(map.CellAt))
+                        cell.RemoveThreat(unit);
 
                 // Begin enemy turn
                 game.ChangeState(new EnemyTurnAI());
@@ -149,6 +148,11 @@ namespace SRPGDemo.Battle.Gameplay
             // Reset player APs for next turn
             map.Units(UnitTeam.enemy).ForEach(x => x.ap.Reset());
 
+            // Re-establish enemy threat
+            foreach (MapUnit unit in map.Units(UnitTeam.enemy))
+                foreach (MapCell cell in unit.GetThreatArea().Select(map.CellAt))
+                    cell.AddThreat(unit);
+
             // Stall for one frame before changing states
             yield return null;
             
@@ -162,7 +166,7 @@ namespace SRPGDemo.Battle.Gameplay
         public override IEnumerator AnimationCoroutine()
         {
             yield return null;
-            game.ChangeState(new EndBattle());
+            game.LoadSceneByName("Main Menu");
         }
     }
 }

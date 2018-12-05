@@ -1,96 +1,73 @@
-﻿using System;
+﻿using GridLib.Hex;
+using SRPGDemo.Extensions;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using Gamelogic.Grids;
-using SRPGDemo.Extensions;
+using Random = UnityEngine.Random;
 
 namespace SRPGDemo.Strategic.Map
 {
-    static class VectorExt
+    public class MapPiece : ScriptableObject
     {
-        public static Vector3 WithX(this Vector3 orig, float newX)
+        private MapController map { get { return MapController.instance; } }
+
+        public Dictionary<HexCoords, CellType> cells = new Dictionary<HexCoords, CellType>();
+
+        public IEnumerable<HexCoords> TargetArea(HexCoords center, HexRotation pieceRot)
         {
-            return new Vector3(newX, orig.y, orig.z);
+            return cells.Keys
+                .Select(x => x.Rotate(pieceRot))
+                .Select(x => x + center);
         }
 
-        public static Vector3 WithY(this Vector3 orig, float newY)
+        public IEnumerable<MapCell> TargetArea(MapCell center, HexRotation pieceRot)
         {
-            return new Vector3(orig.x, newY, orig.z);
+            return TargetArea(center.loc, pieceRot).Select(map.CellAt);
         }
 
-        public static Vector3 WithZ(this Vector3 orig, float newZ)
+        private static IEnumerable<HexCoords> ContiguousPoints(int count, bool balance = true)
         {
-            return new Vector3(orig.x, orig.y, newZ);
-        }
-    }
+            if (count == 0) return new List<HexCoords>();
 
-    [AddComponentMenu("SRPG Demo/Strategic/Map Controller")]
-    [RequireComponent(typeof(FlatHexTileGridBuilder))]
-    public class MapPiece : GridBehaviour<FlatHexPoint>
-    {
-        private MapController map { get { return Controllers.map; } }
+            List<HexCoords> points = new List<HexCoords>();
+            points.Add(HexCoords.O);
 
-        private IGrid<MapCell, FlatHexPoint> _pieceGrid = null;
-        public IGrid<MapCell, FlatHexPoint> pieceGrid
-        {
-            get
+            for (int x = 1; x < count; x++) points.Add(points.Frontier().RandomPick());
+
+            if (balance)
             {
-                if (_pieceGrid == null) _pieceGrid = Grid.CastValues<MapCell, FlatHexPoint>();
+                int maxX = points.Select(p => p.x).Max();
+                int minX = points.Select(p => p.x).Min();
 
-                return _pieceGrid;
+                int maxY = points.Select(p => p.y).Max();
+                int minY = points.Select(p => p.y).Min();
+
+                int maxZ = points.Select(p => p.z).Max();
+                int minZ = points.Select(p => p.z).Min();
+
+                HexCoords circumcenter = HexCoords.Round(
+                    (minX + maxX) / 2,
+                    (minY + maxY) / 2,
+                    (minZ + maxZ) / 2);
+
+                points = points.Select(p => p - circumcenter).ToList();
             }
+
+            return points;
         }
 
-        public FlatHexPoint WhereIs(MapCell cell)
+        public static MapPiece Generate()
         {
-            PointList<FlatHexPoint> pointList = pieceGrid.WhereCell(x => x == cell).ToPointList();
+            MapPiece result = CreateInstance<MapPiece>();
 
-            if (pointList.Count == 1)
-                return pointList[0];
-            else if (pointList.Count > 1)
-                throw new ArgumentOutOfRangeException("cell", "Count > 1");
-            else
-                throw new ArgumentOutOfRangeException("cell", "Count <= 0");
-        }
+            List<HexCoords> points = ContiguousPoints(Random.Range(4, 6)).ToList();
 
-        public MapCell CellAt(FlatHexPoint loc)
-        {
-            if (InBounds(loc))
-                return pieceGrid[loc];
-            else
-                return null;
-        }
-
-        public bool InBounds(FlatHexPoint loc)
-        {
-            return Grid.Contains(loc);
-        }
-
-        void Update()
-        {
-            transform.position = Camera.main.ScreenToWorldPoint(Input.mousePosition)
-                .WithZ(transform.position.z);
-
-            /*pieceGrid
-                .Select(CellAt)
-                .Select(MapCoords)
-                .Where(map.InBounds)
-                .Select(map.CellAt)
-                .Where*/
-        }
-
-        public override void InitGrid()
-        {
-            if (Application.isPlaying)
+            foreach(HexCoords point in ContiguousPoints(Random.Range(4, 6)))
             {
-                pieceGrid
-                    .Select(CellAt)
-                    .ForEach(x =>
-                {
-                    x.spriteRenderer.sortingLayerName = "Effects";
-                    x.state = CellState.valid;
-                });
+                result.cells[point] = CellType.greenPlain;
             }
+
+            return result;
         }
     }
 }

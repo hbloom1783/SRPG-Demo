@@ -14,8 +14,8 @@ namespace SRPGDemo.Battle.Map
         public int maxHp;
         public int maxAp;
 
-        public int move;
-        public int jump;
+        public uint move;
+        public uint jump;
 
         public UnitSize size;
     }

@@ -1,15 +1,9 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections;
 using SRPGDemo.Battle.Map;
-using UnityEngine;
+using SRPGDemo.Battle.Gameplay.Extensions;
 
 namespace SRPGDemo.Battle.Gameplay
 {
-    using Extensions;
-
     class MeleeAttack : GameControllerAnimation
     {
         private MapUnit unit;

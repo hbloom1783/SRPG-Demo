@@ -1,71 +1,176 @@
-﻿using System;
+﻿using UnityEngine;
+using GridLib.Hex;
+using System.Collections.Generic;
 using System.Linq;
-using UnityEngine;
-using Gamelogic.Grids;
-using SRPGDemo.Extensions;
+using System;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace SRPGDemo.Strategic.Map
 {
     [AddComponentMenu("SRPG Demo/Strategic/Map Controller")]
-    [RequireComponent(typeof(FlatHexTileGridBuilder))]
-    public class MapController : GridBehaviour<FlatHexPoint>
+    public class MapController : HexGridManager<MapCell>
     {
-        #region Map reference
+        #region Singleton
 
-        private IGrid<MapCell, FlatHexPoint> _mapGrid = null;
-        public IGrid<MapCell, FlatHexPoint> mapGrid
+        private static MapController _instance = null;
+        public static MapController instance
         {
-            get
-            {
-                if (_mapGrid == null) _mapGrid = Grid.CastValues<MapCell, FlatHexPoint>();
-
-                return _mapGrid;
-            }
+            get { return _instance; }
+            private set { _instance = value; }
         }
 
-        public FlatHexPoint WhereIs(MapCell cell)
+        void Awake()
         {
-            PointList<FlatHexPoint> pointList = mapGrid.WhereCell(x => x == cell).ToPointList();
-
-            if (pointList.Count == 1)
-                return pointList[0];
-            else if (pointList.Count > 1)
-                throw new ArgumentOutOfRangeException("cell", "Count > 1");
+            if (instance != null)
+                Destroy(gameObject);
             else
-                throw new ArgumentOutOfRangeException("cell", "Count <= 0");
+                instance = this;
         }
 
-        public MapCell CellAt(FlatHexPoint loc)
+        void OnDestroy()
         {
-            if (InBounds(loc))
-                return mapGrid[loc];
-            else
-                return null;
-        }
-
-        public bool InBounds(FlatHexPoint loc)
-        {
-            return Grid.Contains(loc);
+            instance = null;
         }
 
         #endregion
 
-        public FlatHexPoint crashSite { get { return new FlatHexPoint(10, -1); } }
+        #region Cell management
 
-        public override void InitGrid()
+        public MapCell mapCellPrefab = null;
+
+        public override void InitCell(HexCoords loc, MapCell newCell)
         {
-            _mapGrid = null;
+            base.InitCell(loc, newCell);
+        }
 
-            if (Application.isPlaying)
+        public MapCell InitCell(HexCoords loc)
+        {
+            MapCell newCell = Instantiate(mapCellPrefab);
+
+            InitCell(loc, newCell);
+
+            return newCell;
+        }
+
+        public MapCell mouseCell { get { return CellAt(mousePosition); } }
+
+        public delegate bool CellMatch(MapCell target, MapCell neighbor);
+
+        public IEnumerable<MapCell> FloodFill(MapCell start, CellMatch match)
+        {
+            HashSet<MapCell> done = new HashSet<MapCell>();
+            Queue<MapCell> todo = new Queue<MapCell>();
+
+            todo.Enqueue(start);
+
+            while (todo.Count > 0)
             {
-                FlatHexPoint crashSite = mapGrid.RandomPick();
+                MapCell target = todo.Dequeue();
 
-                mapGrid[crashSite].state = CellState.filled;
-                crashSite.GetNeighbors()
-                    .Where(InBounds)
-                    .Select(x => mapGrid[x])
-                    .ForEach(x => x.state = CellState.filled);
+                yield return target;
+
+                foreach (MapCell neighbor in target.neighbors)
+                    if (!done.Contains(neighbor) && match(target, neighbor))
+                        todo.Enqueue(neighbor);
+
+                done.Add(target);
+            }
+        }
+
+        #endregion
+
+        #region Map reference
+
+        public HexCoords WhereIs(MapUnit unit)
+        {
+            return unitIndex[unit];
+        }
+
+        public MapUnit UnitAt(HexCoords loc)
+        {
+            if (InBounds(loc))
+                return CellAt(loc).unitPresent;
+            else
+                return null;
+        }
+
+        public MapCell UnitCell(MapUnit unit)
+        {
+            return CellAt(WhereIs(unit));
+        }
+
+        #endregion
+
+        #region Unit management
+
+        Dictionary<MapUnit, HexCoords> unitIndex = new Dictionary<MapUnit, HexCoords>();
+
+        public void PlaceUnit(MapUnit unit, MapCell cell)
+        {
+            if (cell.unitPresent != null)
+                throw new ArgumentException("Cell not empty!");
+
+            cell.unitPresent = unit;
+            unit.transform.parent = cell.transform;
+            unit.transform.position = cell.transform.position;
+            unitIndex[unit] = cell.loc;
+
+            cell.fog = CellFogOfWar.clear;
+        }
+
+        public void PlaceUnit(MapUnit unit, HexCoords loc)
+        {
+            PlaceUnit(unit, CellAt(loc));
+        }
+
+        public void UnplaceUnit(MapUnit unit)
+        {
+            CellAt(WhereIs(unit)).unitPresent = null;
+            unit.transform.parent = transform;
+            unitIndex.Remove(unit);
+        }
+
+        public IEnumerable<MapUnit> Units()
+        {
+            return unitIndex.Keys;
+        }
+
+        public IEnumerable<MapUnit> Units(Func<MapUnit, bool> pred)
+        {
+            return Units().Where(pred);
+        }
+
+        public bool HasUnit(MapUnit unit)
+        {
+            return unitIndex.ContainsKey(unit);
+        }
+
+        #endregion
+    }
+
+#if UNITY_EDITOR
+    [CustomEditor(typeof(MapController))]
+    class MapControllerEditor : Editor
+    {
+        public override void OnInspectorGUI()
+        {
+            base.OnInspectorGUI();
+
+            MapController myScript = (MapController)target;
+
+            if (GUILayout.Button("Initialize"))
+            {
+                myScript.InitGrid();
+            }
+
+            if (GUILayout.Button("Clear"))
+            {
+                myScript.ClearGrid();
             }
         }
     }
+#endif
 }
